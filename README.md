@@ -93,39 +93,19 @@ Everything the agent knows comes from what the engine fed it. The engine is the 
 
 ### Engine vs. Agent: Who Controls What
 
-```mermaid
-flowchart LR
-    subgraph ENGINE ["Engine (deterministic)"]
-        direction TB
-        E1[Time · Season · Weather]
-        E2[Body: hunger · energy · sickness]
-        E3[Location · Opening hours · Routing]
-        E4[Tool degradation · Spoilage]
-        E5[Marketplace order book]
-        E6[Production recipe validation]
-        E7[Loan system · Tax collection]
-        E8[Memory compression]
-        E9[Acquaintance gating]
-        E10[Starvation · Death]
-    end
-
-    subgraph AGENT ["Agent (LLM, single call)"]
-        direction TB
-        A1[Choose action: speak / produce / trade / move / ...]
-        A2[Generate dialogue content]
-        A3[Negotiate prices · Form alliances]
-    end
-
-    subgraph RESOLVE ["Resolution (deterministic)"]
-        direction TB
-        R1[Validate against world rules]
-        R2[Update state · inventory · wallet]
-        R3[Write memory file]
-    end
-
-    ENGINE -->|perception string| AGENT
-    AGENT -->|JSON actions| RESOLVE
-    RESOLVE -->|state changes| ENGINE
+```
+┌─────────────────────────────┐     perception      ┌─────────────────────┐     JSON actions     ┌─────────────────────────────┐
+│        ENGINE               │ ──────────────────► │    AGENT (LLM)      │ ───────────────────► │       RESOLUTION            │
+│      (deterministic)        │                     │    (single call)    │                      │      (deterministic)        │
+│                             │                     │                     │                      │                             │
+│  · Time · Season · Weather  │                     │  · Choose action    │                      │  · Validate world rules     │
+│  · Hunger · Energy · Sleep  │                     │  · Speak · Produce  │                      │  · Update inventory/wallet  │
+│  · Opening hours · Routing  │ ◄───────────────────│  · Trade · Move     │                      │  · Write memory file        │
+│  · Tool degradation         │    state changes    │  · Negotiate prices │                      │  · Emit SSE events          │
+│  · Order book · Spoilage    │                     │  · Form alliances   │                      │                             │
+│  · Recipe validation        │                     │                     │                      └─────────────────────────────┘
+│  · Loans · Tax · Death      │                     └─────────────────────┘
+└─────────────────────────────┘
 ```
 
 The split is intentional. The engine handles **everything that would otherwise require instructing the agent**:
