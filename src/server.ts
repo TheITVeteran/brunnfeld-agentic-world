@@ -10,7 +10,6 @@ import type { AgentName, AgentAction } from "./types.js";
 import { initPlayer } from "./player.js";
 import { resolveAction } from "./tools.js";
 import { resolveProduction } from "./production.js";
-import { resolveMarketplace } from "./marketplace-resolver.js";
 import { tickToTime } from "./time.js";
 
 export { emitSSE };
@@ -257,8 +256,6 @@ const server = createServer(async (req, res) => {
 
       if (action.type === "produce") {
         resolveProduction([playerResult], state, time);
-      } else if (action.type === "post_order" || action.type === "cancel_order") {
-        resolveMarketplace([playerResult], state, time);
       }
 
       // Collect feedback written during resolution

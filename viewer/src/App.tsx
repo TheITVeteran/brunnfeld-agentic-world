@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useSSE } from "./hooks/useSSE";
 import { useVillageStore } from "./store";
 import TimeHUD from "./components/TimeHUD";
@@ -16,8 +17,10 @@ export default function App() {
   const connected = useVillageStore(s => s.connected);
   const watchMode = useVillageStore(s => s.watchMode);
   const activeMeeting = useVillageStore(s => s.activeMeeting);
+  const [previewTownHall, setPreviewTownHall] = useState(false);
 
   const showCreation = connected && !playerCreated && !watchMode;
+  const showTownHall = !!activeMeeting || previewTownHall;
 
   return (
     <div style={{
@@ -40,7 +43,25 @@ export default function App() {
         {playerCreated && <PlayerHUD />}
 
         <div style={{ flex: 1, position: "relative", overflow: "hidden", margin: "6px 0 0 6px" }}>
-          {activeMeeting ? <TownHallView /> : <VillageMap />}
+          {showTownHall ? <TownHallView preview={!activeMeeting} /> : <VillageMap />}
+
+          {/* Town Hall preview toggle — bottom-left of map */}
+          {!activeMeeting && (
+            <button
+              onClick={() => setPreviewTownHall(v => !v)}
+              style={{
+                position: "absolute", bottom: 10, left: 10,
+                background: previewTownHall ? "#3d2810" : "rgba(20,14,6,0.82)",
+                border: `1px solid ${previewTownHall ? "#a06830" : "#4a3010"}`,
+                color: previewTownHall ? "#f0c870" : "#a08050",
+                fontFamily: "monospace", fontSize: "11px",
+                padding: "5px 10px", borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              🏛 {previewTownHall ? "Back to village" : "Town Hall"}
+            </button>
+          )}
         </div>
 
         <RightPanel />

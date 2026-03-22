@@ -258,6 +258,13 @@ export function buildPerception(
   const producibleBlock = getProducibleBlock(agent, state);
   const marketboardLines = buildMarketboardLines(agent, state);
 
+  const agentOrders = state.marketplace.orders.filter(o => o.agentId === agent);
+  const activeOrdersBlock = agentOrders.length > 0
+    ? `\nYour active orders:\n${agentOrders.map(o =>
+        `${o.type.toUpperCase()} ${o.item} x${o.quantity} at ${o.price}c each (id: ${o.id}, expires in ${o.expiresAtTick - time.tick} ticks)`
+      ).join("\n")}`
+    : "";
+
   const othersStr = otherAgentsPresent.length > 0
     ? `Others here: ${otherAgentsPresent.join(", ")}.`
     : "You are alone here.";
@@ -304,7 +311,7 @@ ${othersStr}${soundsStr ? "\n" + soundsStr : ""}${keeperNote ? "\n" + keeperNote
 ${bodyNote ? bodyNote + "\n" : ""}${hungryHint ? hungryHint + "\n" : ""}
 Inventory: ${inventoryLines}
 ${surplusHint ? surplusHint + "\n" : ""}Wallet: ${eco.wallet} coin${loanPerception}
-Tools: ${toolLine}${hiredNote}${laborerNote}${producibleBlock}
+Tools: ${toolLine}${hiredNote}${laborerNote}${producibleBlock}${activeOrdersBlock}
 
 Marketplace board:
 ${marketboardLines}

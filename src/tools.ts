@@ -5,8 +5,9 @@ import { getHourIndex } from "./time.js";
 import { lockDoor, unlockDoor, resolveKnock } from "./doors.js";
 import { queueMessage } from "./messages.js";
 import { resolveEat } from "./body.js";
-import { feedbackToAgent, addToInventory, removeFromInventory, getInventoryQty } from "./inventory.js";
-import { executeTrade, removeOrder } from "./marketplace.js";
+import { feedbackToAgent, addToInventory, removeFromInventory, getInventoryQty, reserveInventory } from "./inventory.js";
+import { executeTrade, removeOrder, addOrder, generateOrderId } from "./marketplace.js";
+import { emitSSE } from "./events.js";
 import { isLocationBlockedByEvent } from "./god-mode.js";
 
 const CORE_ACTION_SCHEMA = `IMPORTANT: Your wallet and inventory shown above are exact. Do not claim to have coin or goods you have not received. Verbal agreements do not transfer goods — only post_order and buy_item create actual trades.
@@ -28,7 +29,7 @@ Available actions:
 - produce: Craft or gather an item. Fields: item. Must be at the right location with skill and inputs. Once per turn.
 - eat: Eat food from your inventory. Fields: item, quantity.
 - post_order: Post a buy or sell order. Fields: side ("sell"|"buy"), item, quantity, price (per unit).
-- buy_item: Buy from the marketplace. Fields: item, max_price. Must be at Village Square.
+- buy_item: Buy from the marketplace. Fields: item, max_price, quantity (optional, defaults to full order quantity). Fills the cheapest matching sell order regardless of seller. To trade with a specific person, they must post a sell order and your price must match. Must be at Village Square.
 - cancel_order: Cancel your marketplace order. Fields: order_id.
 - send_message: Send a written message. Fields: to (first name), text.
 - give_coin: Give coin (payment, repayment, gift). Fields: to (first name), amount.
@@ -166,11 +167,84 @@ export function resolveAction(
       return { ...action, result: obj.content || obj.label, visible: false };
     }
 
-    // Production/order actions pass through to dedicated resolvers
+    // produce passes through to dedicated resolver
     case "produce":
-    case "post_order":
-    case "cancel_order":
       return { ...action, result: "(pending economic resolution)", visible: false };
+
+    case "post_order": {
+      const side = action.side;
+      const item = action.item as ItemType | undefined;
+      const quantity = action.quantity != null ? Number(action.quantity) : undefined;
+      const price = action.price != null ? Number(action.price) : undefined;
+
+      if (!side || (side !== "sell" && side !== "buy") || !item || !quantity || !price || quantity <= 0 || price <= 0) {
+        feedbackToAgent(agent, state, `[Can't do that] post_order requires side ("sell" or "buy"), item, quantity, price.`);
+        return { ...action, result: `[Can't do that] post_order requires side ("sell" or "buy"), item, quantity, price.`, visible: false };
+      }
+
+      const orderSide = side as "sell" | "buy";
+
+      if (orderSide === "sell") {
+        const inv = state.economics[agent].inventory;
+        const invItem = inv.items.find(i => i.type === item);
+        const totalQty = invItem?.quantity ?? 0;
+        const alreadyReserved = invItem?.reserved ?? 0;
+        const available = Math.max(0, totalQty - alreadyReserved);
+        if (quantity > available) {
+          feedbackToAgent(agent, state, `[Can't post] You only have ${available} ${item} available (${alreadyReserved} reserved in other orders).`);
+          return { ...action, result: `[Can't post] You only have ${available} ${item} available (${alreadyReserved} reserved in other orders).`, visible: false };
+        }
+        reserveInventory(agent, item, quantity, state);
+      }
+
+      if (orderSide === "buy") {
+        const needed = price * quantity;
+        if (state.economics[agent].wallet < needed) {
+          feedbackToAgent(agent, state, `[Can't do that] You need ${needed} coin to reserve this buy order but have ${state.economics[agent].wallet}.`);
+          return { ...action, result: `[Can't do that] You need ${needed} coin to reserve this buy order but have ${state.economics[agent].wallet}.`, visible: false };
+        }
+      }
+
+      const newOrder = {
+        id: generateOrderId(),
+        agentId: agent,
+        type: orderSide,
+        item,
+        quantity,
+        price,
+        postedTick: time.tick,
+        expiresAtTick: time.tick + 16,
+      };
+      addOrder(state.marketplace, newOrder);
+      emitSSE("order:posted", { orderId: newOrder.id, agentId: agent, orderType: orderSide, item, quantity, price });
+      feedbackToAgent(agent, state, `Posted ${orderSide.toUpperCase()} order: ${quantity} ${item} at ${price} coin each. Order ID: ${newOrder.id} (expires in 16 ticks). Use cancel_order with this ID to cancel it.`);
+      return { ...action, result: `Posted ${orderSide.toUpperCase()} order: ${quantity} ${item} at ${price} coin each. Order ID: ${newOrder.id}.`, visible: false };
+    }
+
+    case "cancel_order": {
+      const orderId = action.order_id;
+      if (!orderId) {
+        feedbackToAgent(agent, state, "[Can't do that] cancel_order requires order_id.");
+        return { ...action, result: "[Can't do that] cancel_order requires order_id.", visible: false };
+      }
+
+      const order = state.marketplace.orders.find(o => o.id === orderId && o.agentId === agent);
+      if (!order) {
+        feedbackToAgent(agent, state, `[Can't do that] No order ${orderId} found for you.`);
+        return { ...action, result: `[Can't do that] No order ${orderId} found for you.`, visible: false };
+      }
+
+      if (order.type === "sell") {
+        const inv = state.economics[agent].inventory;
+        const found = inv.items.find(i => i.type === order.item);
+        if (found) found.reserved = Math.max(0, (found.reserved ?? 0) - order.quantity);
+      }
+
+      removeOrder(state.marketplace, orderId);
+      emitSSE("order:cancelled", { orderId, agentId: agent, orderType: order.type, item: order.item, quantity: order.quantity, price: order.price });
+      feedbackToAgent(agent, state, `Cancelled ${order.type.toUpperCase()} order for ${order.item} x${order.quantity} at ${order.price}c (id: ${orderId}).`);
+      return { ...action, result: `Cancelled ${order.type.toUpperCase()} order for ${order.item} x${order.quantity} at ${order.price}c.`, visible: false };
+    }
 
     // buy_item resolves immediately so the agent can eat in the same turn
     case "buy_item": {
@@ -196,12 +270,17 @@ export function resolveAction(
         return { ...action, result: `[No match] No sell orders for ${item} at or below ${maxPrice} coin.${cheapestNote}`, visible: false };
       }
       const order = matches[0]!;
-      const cost = order.price * order.quantity;
+      const buyQuantity = Math.min(action.quantity ?? order.quantity, order.quantity);
+      const cost = order.price * buyQuantity;
       if (state.economics[agent].wallet < cost) {
         return { ...action, result: `[Can't afford] Need ${cost} coin but have ${state.economics[agent].wallet}.`, visible: false };
       }
-      const trade = executeTrade(agent, order.agentId, item, order.quantity, order.price, state, time);
-      removeOrder(state.marketplace, order.id);
+      const trade = executeTrade(agent, order.agentId, item, buyQuantity, order.price, state, time);
+      if (buyQuantity < order.quantity) {
+        order.quantity -= buyQuantity;
+      } else {
+        removeOrder(state.marketplace, order.id);
+      }
       feedbackToAgent(order.agentId, state, `Sold ${trade.quantity} ${trade.item} to ${name} for ${trade.total} coin.`);
       return { ...action, result: `${name} bought ${trade.quantity} ${trade.item} for ${trade.total} coin.`, visible: true };
     }

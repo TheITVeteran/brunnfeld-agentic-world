@@ -91,12 +91,23 @@ function MeetingLog({ meeting }: { meeting: MeetingState }) {
   );
 }
 
+const PREVIEW_MEETING: MeetingState = {
+  phase: "discussion",
+  agendaType: "general_rule",
+  description: "Preview — no meeting in progress",
+  attendees: [],
+  votes: {},
+  proposal: null,
+  result: null,
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────
 
-export default function TownHallView() {
+export default function TownHallView({ preview = false }: { preview?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const meeting = useVillageStore(s => s.activeMeeting);
+  const activeMeeting = useVillageStore(s => s.activeMeeting);
+  const meeting = activeMeeting ?? (preview ? PREVIEW_MEETING : null);
   const frameRef = useRef(0);
   const rafRef = useRef<number>(0);
 
@@ -139,8 +150,20 @@ export default function TownHallView() {
         ref={canvasRef}
         style={{ display: "block", width: "100%", height: "100%" }}
       />
-      <MeetingHeader meeting={meeting} />
-      <MeetingLog meeting={meeting} />
+      {!preview && <MeetingHeader meeting={meeting} />}
+      {!preview && <MeetingLog meeting={meeting} />}
+      {preview && (
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0,
+          background: "rgba(0,0,0,0.7)",
+          borderBottom: "1px solid #4a3010",
+          padding: "6px 14px",
+          fontFamily: "monospace", fontSize: "11px",
+          color: "#6b5030", letterSpacing: "1px",
+        }}>
+          TOWN HALL — preview (no meeting active)
+        </div>
+      )}
     </div>
   );
 }

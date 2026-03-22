@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { renderVillage, hitTestLocation, screenToWorld, spawnParticle, type Camera, type ActiveAnimation } from "../canvas/renderer";
-import { locationPx, TILE_SIZE } from "../canvas/map";
+import { locationPx, TILE_SIZE, WORLD_W, WORLD_H } from "../canvas/map";
 import { useVillageStore, AGENT_DISPLAY } from "../store";
 import type { AgentName } from "../types";
 
@@ -108,12 +108,41 @@ export default function VillageMap() {
     return () => cancelAnimationFrame(animRef.current);
   }, [world, selectedAgent, hoveredLoc]);
 
+  const ZOOM_MIN = 0.5;
+  const ZOOM_MAX = 2.0;
+
+  const clampCamera = useCallback((cam: Camera, canvasW: number, canvasH: number) => {
+    // Keep at least half the map visible in each direction
+    const halfW = (canvasW / 2) / cam.zoom;
+    const halfH = (canvasH / 2) / cam.zoom;
+    cam.x = Math.max(halfW, Math.min(WORLD_W - halfW, cam.x));
+    cam.y = Math.max(halfH, Math.min(WORLD_H - halfH, cam.y));
+  }, []);
+
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const cam = cameraRef.current;
-    const factor = e.deltaY > 0 ? 0.9 : 1.1;
-    cam.zoom = Math.max(0.3, Math.min(2.5, cam.zoom * factor));
-  }, []);
+
+    // Zoom proportional to deltaY — feels smooth on both trackpad and mouse wheel
+    const delta = e.deltaY * (e.deltaMode === 1 ? 30 : 1); // normalise line-mode
+    const factor = Math.exp(-delta * 0.001);
+    const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cam.zoom * factor));
+    if (newZoom === cam.zoom) return;
+
+    // Zoom toward cursor: keep the world-point under the cursor fixed
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const wx = cam.x + (mx - canvas.clientWidth  / 2) / cam.zoom;
+    const wy = cam.y + (my - canvas.clientHeight / 2) / cam.zoom;
+
+    cam.zoom = newZoom;
+    cam.x = wx - (mx - canvas.clientWidth  / 2) / newZoom;
+    cam.y = wy - (my - canvas.clientHeight / 2) / newZoom;
+    clampCamera(cam, canvas.clientWidth, canvas.clientHeight);
+  }, [clampCamera]);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 0) {
@@ -135,8 +164,9 @@ export default function VillageMap() {
       const dy = e.clientY - dragRef.current.sy;
       cameraRef.current.x = dragRef.current.cx - dx / cameraRef.current.zoom;
       cameraRef.current.y = dragRef.current.cy - dy / cameraRef.current.zoom;
+      clampCamera(cameraRef.current, canvas.clientWidth, canvas.clientHeight);
     }
-  }, []);
+  }, [clampCamera]);
 
   const onMouseUp = useCallback((e: React.MouseEvent) => {
     const wasDrag = dragRef.current &&
