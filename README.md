@@ -6,7 +6,7 @@
 
 19 LLM agents live in a 22-location village. They receive no behavioral instructions, no trading strategies, no economic goals. Each agent gets a short background — name, skill, home, starting goods — and a structured world that enforces physics: hunger, tool degradation, seasonal yields, locked doors, expiring orders, spoiling food, debt.
 
-The agents don't produce interesting economic behavior because they're told to. They produce it because the environment constrains what's possible. A miller who controls the only flour supply creates a structural bottleneck — not because she's instructed to, but because only she has the skill and the location. That's not character design. That's supply chain architecture.
+The agents produce interesting economic behavior because two things collide: what the LLM already knows about the world, and what the engine will actually allow. The LLM knows what a miller does. The engine enforces that only Gerda has the skill and the location. Neither alone produces what you see — pretraining without constraints is generic roleplay; constraints without pretraining is random noise. Together, they produce a miller who actually blocks bread production when she stops coming to market.
 
 ---
 
@@ -87,7 +87,7 @@ That's **~300 tokens of structure** plus memory. No "you are a profit-seeking me
 - Gerda wants flour at 6c and is standing next to him → he can negotiate
 - He's hungry → he might eat his own bread before selling it
 
-Everything the agent knows comes from what the engine fed it. The engine is the economy.
+Everything the agent *can do* comes from what the engine allows. Whether it *does* those things, and in what order, comes from the LLM. The engine is the economy. The LLM is the person living in it.
 
 ---
 
@@ -234,15 +234,15 @@ Non-adjacent moves route through Village Square (2 ticks).
 
 | Agent | Skill | Home | Starting Coin | Role |
 |-------|-------|------|--------------|------|
-| **Hans** | farmer | Farm 1 | 30c | Primary wheat producer |
+| **Hans** ★ | farmer | Farm 1 | 30c | Primary wheat producer |
 | **Heinrich** | farmer | Farm 1 | 25c | Wheat + eggs |
 | **Ulrich** | farmer | Farm 3 | 20c | Vegetables |
 | **Bertram** | farmer | Farm 1 | 15c | Wheat (subsistence) |
 | **Konrad** | cattle | Farm 2 | 40c | Milk + meat |
-| **Gerda** | miller | Mill | 45c | Wheat → flour (sole supplier) |
-| **Anselm** | baker | Bakery | 32c | Flour → bread (sole supplier) |
+| **Gerda** ★ | miller | Mill | 45c | Wheat → flour (sole supplier) |
+| **Anselm** ★ | baker | Bakery | 32c | Flour → bread (sole supplier) |
 | **Liesel** | tavern | Tavern | 55c | Ale + meals |
-| **Volker** | blacksmith | Forge | 60c | Iron ore + coal → tools |
+| **Volker** ★ | blacksmith | Forge | 60c | Iron ore + coal → tools |
 | **Wulf** | carpenter | Carpenter Shop | 35c | Timber → furniture |
 | **Friedrich** | woodcutter | Cottage 7 | 22c | Timber + firewood |
 | **Dieter** | miner | Cottage 8 | 18c | Iron ore + coal |
@@ -251,8 +251,10 @@ Non-adjacent moves route through Village Square (2 ticks).
 | **Elke** | seamstress | Seamstress Cottage | 30c | Cloth production |
 | **Ida** | — | Cottage 2 | 12c | No production skill |
 | **Magda** | — | Cottage 8 | 10c | No production skill |
-| **Otto** | elder | Elder's House | 120c | Tax collector (10% every Monday) |
+| **Otto** ★ | elder | Elder's House | 120c | Tax collector (10% every Monday); chairs the village council |
 | **Pater Markus** | priest | Town Hall | 25c | No economic role |
+
+★ = village council member
 
 **Pre-existing acquaintances** (day 1): Hans↔Heinrich, Gerda↔Anselm, Volker↔Wulf, Friedrich↔Rupert, Dieter↔Rupert, Dieter↔Magda, Liesel↔Otto, Otto↔Pater Markus
 
@@ -548,15 +550,26 @@ Otto sees the pressure. He decides whether it warrants a meeting. The engine doe
 
 Any non-Otto agent can use `petition_meeting` to send a formal request to Otto. Petitions appear in his perception for 1 in-game day (16 ticks). If multiple agents petition on the same topic independently, Otto sees the pattern and can act.
 
+### The Village Council
+
+Five seats are held by the trades the village cannot function without: Otto (chair), Gerda (miller), Anselm (baker), Volker (blacksmith), and Hans (senior farmer). The council is a structural fact — the seats are embedded in their profiles, not elected.
+
+The engine summons council members the evening before each meeting:
+```
+[Council duty] Village council meets tomorrow at dawn at the Town Hall. Your attendance is required.
+```
+
+Council members know the meeting is their responsibility. Whether they actually show up is up to the LLM.
+
 ### Village Meetings
 
-Otto calls a meeting with `call_meeting` (scheduled for next dawn). God Mode can also trigger an emergency meeting that teleports all agents to the Town Hall immediately.
+Otto calls a meeting with `call_meeting` (scheduled for next dawn). God Mode can also trigger an emergency meeting that teleports all agents to the Town Hall immediately. After each meeting concludes, the next daily assembly is automatically scheduled.
 
 **Meeting flow**:
 
-1. **Quorum check** — 11 of 19 agents must be at Town Hall. If not met, the meeting fails.
-2. **Discussion** — 3 rounds with up to 4 participants (Otto always leads). Agents speak their mind; anyone can `propose_rule` with a concrete text and optional numeric value.
-3. **Vote** — All attendees vote `agree` or `disagree` on the first proposal. Need 11/19 to pass.
+1. **Quorum check** — At least 3 of 5 council members must be at Town Hall. If fewer attend, the meeting fails. General villagers may also be present but do not count toward quorum.
+2. **Discussion** — 3 rounds with up to 5 participants (council members go first, then general attendees fill remaining slots). Agents speak their mind; anyone can `propose_rule` with a concrete text and optional numeric value.
+3. **Vote** — All attendees vote `agree` or `disagree` on the first proposal. Needs a simple majority + 1 of total attendees to pass.
 4. **Resolution** — Passed laws take immediate effect: tax rate changes, marketplace hours adjust, agents are banished to Prison.
 
 Meeting attendees are **excluded from normal tick processing** while the meeting runs — they can't farm or trade during a meeting. The full discussion, vote breakdown, and outcome are recorded in the tick log under the `meeting` field.
@@ -584,7 +597,7 @@ If a banishment vote passes, the target is moved to Prison for a fixed duration 
 
 ## What Emerges
 
-These patterns arise from structural constraints the engine enforces — not because agents are instructed to exhibit them:
+These patterns arise from structural constraints colliding with LLM priors — not from instructions, and not from the constraints alone:
 
 **1. The miller becomes a power broker** — Gerda is the only agent who can convert wheat to flour. Anselm needs flour to bake. If Gerda doesn't come to the marketplace, bread production stops. Her structural position creates a bottleneck the engine enforces — whether she exercises leverage through pricing is up to the LLM.
 
@@ -929,13 +942,15 @@ The web viewer at `http://localhost:5173` (dev) or `http://localhost:3333` (prod
 
 ## The Point
 
-Most agent setups give LLMs goals and hope economic behavior follows. This project inverts it: **build the supply chain, not the trading strategy.** The prompt carries no economic instructions — just a background, a list of actions, and whatever the engine decides the agent can currently perceive.
+Most agent setups give LLMs goals and hope economic behavior follows. This project inverts it: **build the supply chain, not the trading strategy.**
 
-The engine does the heavy lifting. It enforces that wheat needs milling before baking. It enforces that tools break and only one person can fix them. It enforces that hunger builds every four hours and starvation kills. It enforces that a closed bakery can't be entered at 3pm.
+The engine enforces the physics: wheat must be milled before baking, tools degrade per use, hunger builds every four hours, bakeries close at 2pm. These constraints are real — they block actions, create scarcity, cause cascades. They're not metaphors.
 
-The two-line background gives the model cultural priors from pretraining — it knows what "miller" or "blacksmith" implies. But the environment decides which of those priors get expressed. Gerda's economic influence, Volker's structural indispensability — these are consequences of structural position, not character instructions.
+The LLM brings the rest: it knows what a miller does, what starvation feels like, what unpaid debts mean. The two-line background activates those priors. You don't need to instruct Gerda to price her flour competitively — the LLM already knows that's what millers do. You just need to make flour actually necessary for bread production.
 
-The agent just acts inside the world. The world makes the agent who they are.
+What you can't get from either alone: Hans paying Konrad 30 coin across two transactions, Konrad claiming no record of either payment, Hans threatening the village court. No pretraining pattern exists for that specific chain. It required the LLM's understanding of debt and fraud colliding with the engine's actual wallet ledger producing actual discrepancies. That's the demo.
+
+**The honest claim**: when you build a real economy around LLMs, they do economics. Not because they discover it from first principles. Because they already know what economics looks like, and now the consequences are real.
 
 ---
 

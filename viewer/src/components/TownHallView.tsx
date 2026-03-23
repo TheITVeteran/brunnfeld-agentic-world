@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useVillageStore } from "../store";
 import { drawInterior } from "../canvas/interior-renderer";
 import type { MeetingState } from "../store";
+import type { AgentName } from "../types";
 
 // ─── Meeting Header ───────────────────────────────────────────────────────
 
@@ -39,6 +40,57 @@ function MeetingHeader({ meeting }: { meeting: MeetingState }) {
       <span style={{ color: "#9ca3af", fontSize: "11px" }}>
         {meeting.attendees.length} attendees
       </span>
+    </div>
+  );
+}
+
+// ─── Discussion Feed ──────────────────────────────────────────────────────
+
+const COUNCIL_COLOR: Partial<Record<AgentName, string>> = {
+  otto: "#f0c870", gerda: "#93c5fd", volker: "#86efac",
+  anselm: "#fca5a5", hans: "#d8b4fe",
+};
+
+function DiscussionFeed({ meeting }: { meeting: MeetingState }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [meeting.discussion.length]);
+
+  return (
+    <div style={{
+      position: "absolute", top: 52, left: 0, bottom: 0,
+      width: "300px",
+      background: "rgba(10,8,4,0.92)",
+      borderRight: "1px solid #3d2810",
+      overflowY: "auto",
+      padding: "10px 12px",
+      fontFamily: "monospace",
+      display: "flex", flexDirection: "column", gap: "8px",
+    }}>
+      {meeting.discussion.length === 0 && (
+        <div style={{ color: "#4a3820", fontSize: "11px", fontStyle: "italic", marginTop: "8px", textAlign: "center" }}>
+          Waiting for discussion…
+        </div>
+      )}
+      {meeting.discussion.map((line, i) => (
+        <div key={i} style={{ fontSize: "12px", lineHeight: "1.5" }}>
+          <span style={{
+            color: COUNCIL_COLOR[line.agent] ?? "#e8d5a0",
+            fontWeight: "bold",
+            marginRight: "5px",
+            display: "block",
+            marginBottom: "2px",
+          }}>
+            {line.name}
+          </span>
+          <span style={{ color: "#c8b898", wordBreak: "break-word" }}>
+            {line.text.replace(/^.*says: "/, "").replace(/"$/, "").replace(/^\[Thought\] /, "")}
+          </span>
+        </div>
+      ))}
+      <div ref={bottomRef} />
     </div>
   );
 }
@@ -99,6 +151,7 @@ const PREVIEW_MEETING: MeetingState = {
   votes: {},
   proposal: null,
   result: null,
+  discussion: [],
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────
@@ -151,6 +204,7 @@ export default function TownHallView({ preview = false }: { preview?: boolean })
         style={{ display: "block", width: "100%", height: "100%" }}
       />
       {!preview && <MeetingHeader meeting={meeting} />}
+      {!preview && <DiscussionFeed meeting={meeting} />}
       {!preview && <MeetingLog meeting={meeting} />}
       {preview && (
         <div style={{

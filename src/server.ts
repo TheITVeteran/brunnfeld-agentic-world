@@ -14,6 +14,12 @@ import { tickToTime } from "./time.js";
 
 export { emitSSE };
 
+// ─── In-memory active meeting (survives browser reconnects) ──
+let activeMeetingState: object | null = null;
+eventBus.on("meeting:start",      (e) => { activeMeetingState = { ...(e as object), phase: "discussion", votes: {}, proposal: null, result: null, discussion: [] }; });
+eventBus.on("meeting:end",        ()  => { activeMeetingState = null; });
+eventBus.on("meeting:quorum_fail",()  => { activeMeetingState = null; });
+
 const DATA_DIR = join(process.cwd(), "data");
 const VIEWER_DIR = join(process.cwd(), "viewer", "dist");
 const PORT = parseInt(process.env.PORT ?? "3333");
@@ -105,7 +111,7 @@ const server = createServer(async (req, res) => {
       // Send initial state immediately
       try {
         const state = JSON.parse(readFileSync(join(DATA_DIR, "world_state.json"), "utf-8"));
-        send({ type: "init", state });
+        send({ type: "init", state, activeMeeting: activeMeetingState });
       } catch { /* state not written yet */ }
 
       req.on("close", () => {

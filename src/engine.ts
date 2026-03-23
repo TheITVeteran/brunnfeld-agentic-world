@@ -1,7 +1,7 @@
 import type {
   AgentName, AgentTurnResult, Law, ResolvedAction, SimTime, TickLog, WorldState,
 } from "./types.js";
-import { AGENT_NAMES, AGENT_DISPLAY_NAMES } from "./types.js";
+import { AGENT_NAMES, AGENT_DISPLAY_NAMES, COUNCIL_MEMBERS } from "./types.js";
 import { emitSSE } from "./events.js";
 import { tickToTime, ticksPerDay, getHourIndex } from "./time.js";
 import {
@@ -185,8 +185,9 @@ async function runMeetingPhase(state: WorldState, time: SimTime): Promise<{ atte
   const atHall = AGENT_NAMES.map(a => `${a}=${state.agent_locations[a]}`).join(", ");
   console.log(`  🏛 [Quorum] Agents at Town Hall: ${attendees.length}/${activeAgents.length} — ${attendees.join(", ") || "none"}`);
   console.log(`  🏛 [Quorum] All locations: ${atHall}`);
-  if (attendees.length < 11) {
-    const msg = `The village meeting on "${mtg.description}" failed to convene — only ${attendees.length} villager(s) attended (need 11).`;
+  const councilPresent = attendees.filter(a => COUNCIL_MEMBERS.includes(a));
+  if (councilPresent.length < 3) {
+    const msg = `The village council meeting on "${mtg.description}" failed to convene — only ${councilPresent.length} council member(s) attended (need 3 of 5).`;
     for (const a of AGENT_NAMES) feedbackToAgent(a, state, msg);
     emitSSE("meeting:quorum_fail", { description: mtg.description, attendeeCount: attendees.length });
     state.pending_meeting = undefined;
@@ -196,10 +197,12 @@ async function runMeetingPhase(state: WorldState, time: SimTime): Promise<{ atte
   console.log(`\n  🏛 Village meeting: "${mtg.description}" — ${attendees.length} attendees`);
   emitSSE("meeting:start", { agendaType: mtg.agendaType, description: mtg.description, attendees, attendeeCount: attendees.length });
 
-  // 2. Discussion phase — 3 rounds, up to 4 active participants (Otto always included)
-  const participants: AgentName[] = attendees.includes("otto")
-    ? ["otto", ...attendees.filter(a => a !== "otto")].slice(0, 4) as AgentName[]
-    : attendees.slice(0, 4);
+  // 2. Discussion phase — 3 rounds, council members first (up to 5 participants)
+  const nonCouncilAttendees = attendees.filter(a => !COUNCIL_MEMBERS.includes(a));
+  const participants = [
+    ...councilPresent,
+    ...nonCouncilAttendees,
+  ].slice(0, 5) as AgentName[];
   let conversationSoFar = "";
   const collectedProposals: Array<{ text: string; value?: number }> = [];
   const meetingMoved = new Set<AgentName>();
@@ -263,8 +266,8 @@ async function runMeetingPhase(state: WorldState, time: SimTime): Promise<{ atte
     }
   }
 
-  // 5. Resolution — need 11 of 19 to pass
-  const PASS_THRESHOLD = 11;
+  // 5. Resolution — simple majority + 1 of attendees
+  const PASS_THRESHOLD = Math.ceil(attendees.length / 2) + 1;
   const passed = agreeCount >= PASS_THRESHOLD;
 
   let lawText: string | undefined;
@@ -285,7 +288,7 @@ async function runMeetingPhase(state: WorldState, time: SimTime): Promise<{ atte
     emitSSE("meeting:result", { passed: true, agreeCount, law });
     console.log(`  ✅ Law passed: "${proposalText}" (${agreeCount} agreed)`);
   } else {
-    const failMsg = `Village meeting result: "${proposalText}" FAILED (${agreeCount} agreed, needed ${PASS_THRESHOLD} of 19).`;
+    const failMsg = `Village meeting result: "${proposalText}" FAILED (${agreeCount} agreed, needed ${PASS_THRESHOLD} of ${attendees.length}).`;
     for (const a of AGENT_NAMES) feedbackToAgent(a, state, failMsg);
     emitSSE("meeting:result", { passed: false, agreeCount });
     console.log(`  ❌ Vote failed: "${proposalText}" (${agreeCount}/${PASS_THRESHOLD})`);
@@ -431,6 +434,17 @@ export async function runTick(tick: number): Promise<void> {
     }
   }
 
+  // Council summons — evening before (8 ticks / hours before dawn)
+  if (state.pending_meeting && time.tick === state.pending_meeting.scheduledTick - 8) {
+    for (const a of COUNCIL_MEMBERS) {
+      if (!isAgentDead(state.body[a])) {
+        feedbackToAgent(a, state,
+          `[Council duty] Village council meets tomorrow at dawn at the Town Hall. Your attendance is required.`
+        );
+      }
+    }
+  }
+
   // ── 4g. VILLAGE MEETING PHASE ───────────────────────────────
   // Drop any pending meeting that is already in the past (stale / never fired)
   if (state.pending_meeting && state.pending_meeting.scheduledTick < time.tick) {
@@ -449,6 +463,20 @@ export async function runTick(tick: number): Promise<void> {
     meetingAttendees = result.attendees;
     meetingLog = result.log;
     console.log(`  🏛 [Meeting] Done — ${meetingAttendees.size} attendees excluded from normal tick`);
+
+    // Schedule next daily meeting (this tick consumed the pending slot)
+    if (!state.pending_meeting) {
+      const nextDawnTick = time.tick + 16;
+      state.pending_meeting = {
+        scheduledTick: nextDawnTick,
+        agendaType: "general_rule",
+        description: "Otto holds the daily village assembly",
+        calledAtTick: time.tick,
+      };
+      const noticeText = `Otto has called the daily village meeting. It will be held at the Town Hall tomorrow at dawn. All are welcome to attend and raise matters.`;
+      for (const a of AGENT_NAMES) feedbackToAgent(a, state, noticeText);
+      console.log(`  🏛 Daily meeting auto-scheduled for tick ${nextDawnTick}`);
+    }
   }
 
   // ── 5. BUILD PERCEPTIONS ─────────────────────────────────────

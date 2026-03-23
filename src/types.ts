@@ -16,6 +16,8 @@ export const AGENT_NAMES: AgentName[] = [
   "dieter", "magda", "heinrich", "elke", "rupert",
 ];
 
+export const COUNCIL_MEMBERS: AgentName[] = ["otto", "gerda", "volker", "anselm", "hans"];
+
 export const AGENT_DISPLAY_NAMES: Record<AgentName, string> = {
   hans: "Hans", ida: "Ida", konrad: "Konrad", ulrich: "Ulrich", bertram: "Bertram",
   gerda: "Gerda", anselm: "Anselm", volker: "Volker", wulf: "Wulf",

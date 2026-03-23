@@ -1,5 +1,5 @@
 import type { AgentAction, AgentName, AgentTurnResult, ItemType, WorldState, SimTime } from "./types.js";
-import { AGENT_DISPLAY_NAMES, AGENT_NAMES } from "./types.js";
+import { AGENT_DISPLAY_NAMES, AGENT_NAMES, COUNCIL_MEMBERS } from "./types.js";
 import { callClaudeJSON } from "./llm.js";
 import { emitSSE } from "./events.js";
 import { readAgentProfile, readAgentMemory } from "./memory.js";
@@ -338,6 +338,10 @@ export function buildMeetingPerception(
     ? `Present: ${othersPresent.join(", ")}.`
     : "You are alone here.";
 
+  const councilNote = COUNCIL_MEMBERS.includes(agent)
+    ? `\nYou hold a council seat. This meeting is part of your duties as a council member.`
+    : "";
+
   const phaseNote = meetingPhase === "discussion"
     ? `\n=== VILLAGE MEETING — DISCUSSION ===\nAgenda: "${mtg.description}" (${mtg.agendaType.replace("_", " ")})\nSpeak your mind. If you have a concrete proposal, use propose_rule with a specific text (and value if it's numeric, e.g. tax rate 0.15). You can also just speak or think.`
     : `\n=== VILLAGE MEETING — VOTE ===\nProposal on the table: "${proposal ?? "(no specific rule proposed)"}"\nUse the vote action with side "agree" or "disagree". Speak first if you want.`;
@@ -346,7 +350,7 @@ export function buildMeetingPerception(
 Location: Town Hall. ${time.timeLabel}. ${time.season.charAt(0).toUpperCase() + time.season.slice(1)}, day ${time.seasonDay}/7.
 Weather: ${state.weather}${lawsBlock}
 
-${othersStr}
+${othersStr}${councilNote}
 ${body.hunger > 1 ? `Hunger: ${body.hunger}/5.` : ""}
 Wallet: ${eco.wallet} coin
 ${feedback ? `Last tick feedback:\n${feedback}\n` : ""}${conversationSoFar ? `\nConversation so far:\n${conversationSoFar}\n` : ""}${phaseNote}`.trim();

@@ -123,7 +123,7 @@ export interface FeedEntry {
 }
 
 export type SSEEvent =
-  | { type: "init"; state: WorldState }
+  | { type: "init"; state: WorldState; activeMeeting?: Record<string, unknown> | null }
   | { type: "tick"; tick: number; time: string; season: Season; weather: string }
   | { type: "thinking"; agent: AgentName; name: string }
   | { type: "stream"; agent: AgentName; name: string; chunk: string }

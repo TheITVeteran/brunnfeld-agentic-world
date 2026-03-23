@@ -3,11 +3,44 @@
 import type { AgentName } from "../types";
 import type { MeetingState } from "../store";
 import { AGENT_DISPLAY } from "../store";
+import { loadSprite, drawSprite } from "./sprites";
 
-// ─── Image loader ─────────────────────────────────────────────────────────
+// ─── Sprite map (mirrors renderer.ts) ────────────────────────────────────
+
+const SPRITES: Record<string, string> = {
+  pawnIdle:    "/assets/units/Pawn/Pawn_Idle.png",
+  pawnAxe:     "/assets/units/Pawn/Pawn_Idle Axe.png",
+  pawnHammer:  "/assets/units/Pawn/Pawn_Idle Hammer.png",
+  pawnPickaxe: "/assets/units/Pawn/Pawn_Idle Pickaxe.png",
+  pawnWood:    "/assets/units/Pawn/Pawn_Idle Wood.png",
+  monkIdle:    "/assets/units/Monk/Idle.png",
+  warriorIdle: "/assets/units/Warrior/Warrior_Idle.png",
+};
+
+const AGENT_SPRITE: Partial<Record<AgentName, string>> = {
+  hans: "pawnAxe", ida: "pawnIdle", konrad: "pawnIdle", ulrich: "pawnAxe",
+  bertram: "pawnAxe", gerda: "pawnHammer", anselm: "pawnHammer",
+  volker: "pawnHammer", wulf: "pawnHammer", liesel: "pawnIdle",
+  sybille: "pawnIdle", friedrich: "pawnWood",
+  otto: "warriorIdle", pater_markus: "monkIdle",
+  dieter: "pawnPickaxe", magda: "pawnIdle", heinrich: "pawnAxe",
+  elke: "pawnIdle", rupert: "pawnPickaxe", player: "pawnIdle",
+};
+
+const AGENT_COLORS: Partial<Record<AgentName, string>> = {
+  hans: "#e8c87a", ida: "#f4b8d4", konrad: "#a8d48a", ulrich: "#c8a84a",
+  bertram: "#d4a870", gerda: "#d4d4a0", anselm: "#f0d890", volker: "#c84c4c",
+  wulf: "#a07040", liesel: "#d878a8", sybille: "#80c8d8", friedrich: "#80a850",
+  otto: "#a8a0c8", pater_markus: "#c8c8e8", dieter: "#909090", magda: "#e8b090",
+  heinrich: "#d8c060", elke: "#e878b8", rupert: "#b0b0b0", player: "#ffd700",
+};
+
+const SPRITE_W = 192;
+const SPRITE_H = 192;
+
+// ─── Background loader ────────────────────────────────────────────────────
 
 const imgCache = new Map<string, HTMLImageElement | "loading" | "error">();
-
 function loadImg(url: string): HTMLImageElement | null {
   const hit = imgCache.get(url);
   if (hit && hit !== "loading" && hit !== "error") return hit as HTMLImageElement;
@@ -20,73 +53,64 @@ function loadImg(url: string): HTMLImageElement | null {
   return null;
 }
 
-// ─── Assets ───────────────────────────────────────────────────────────────
+// ─── Draw one agent at canvas position (cx, cy = feet) ───────────────────
 
-const BG_URL      = "/assets/interior/TownHall.png";
-const UNITS_URL   = "/assets/interior/Units.png";
-const WARRIOR_URL = "/assets/units/Warrior/Warrior_Idle.png";
-
-// Warrior_Idle.png: 1536×192, 8 frames of 192×192
-const WARRIOR_FRAME = 192;
-const WARRIOR_FRAMES = 8;
-
-// ─── Agent colours (for labels / fallback) ────────────────────────────────
-
-const AGENT_COLORS: Record<AgentName, string> = {
-  hans: "#e8c87a", ida: "#f4b8d4", konrad: "#a8d48a", ulrich: "#c8a84a",
-  bertram: "#d4a870", gerda: "#d4d4a0", anselm: "#f0d890", volker: "#c84c4c",
-  wulf: "#a07040", liesel: "#d878a8", sybille: "#80c8d8", friedrich: "#80a850",
-  otto: "#a8a0c8", pater_markus: "#c8c8e8", dieter: "#909090", magda: "#e8b090",
-  heinrich: "#d8c060", elke: "#e878b8", rupert: "#b0b0b0",
-  player: "#ffd700",
-};
-
-// ─── Unit sprite ──────────────────────────────────────────────────────────
-// Units.png: 16×16 px frames, 8 cols × 4 rows
-// Row 0 = villager, Row 3 = noble (Otto)
-
-const UNIT_SRC  = 16;
-const UNIT_DISP = 24;
-
-function drawUnit(
+function drawAgent(
   ctx: CanvasRenderingContext2D,
-  units: HTMLImageElement,
+  agent: AgentName,
   cx: number, cy: number,
-  isOtto: boolean,
+  size: number,
   frameIndex: number,
+  vote?: "agree" | "disagree" | undefined,
+  showVote = false,
 ): void {
-  const col = Math.floor(frameIndex / 12) % 4;
-  const row = isOtto ? 3 : 0;
-  ctx.drawImage(
-    units,
-    col * UNIT_SRC, row * UNIT_SRC, UNIT_SRC, UNIT_SRC,
-    Math.floor(cx - UNIT_DISP / 2),
-    Math.floor(cy - UNIT_DISP),
-    UNIT_DISP, UNIT_DISP,
-  );
-}
+  const spriteKey = AGENT_SPRITE[agent] ?? "pawnIdle";
+  const url = SPRITES[spriteKey]!;
+  const sheet = loadSprite(url, SPRITE_W, SPRITE_H);
+  const frame = Math.floor(frameIndex / 8);
 
-// ─── Seat layout in mockup-space (0–200) ──────────────────────────────────
-// Matches the Mockup-3 throne room: benches left+right of the center carpet
+  if (sheet) {
+    ctx.imageSmoothingEnabled = false;
+    drawSprite(ctx, sheet, frame, cx - size / 2, cy - size, size, size);
+  } else {
+    // Colour circle fallback
+    ctx.fillStyle = AGENT_COLORS[agent] ?? "#888";
+    ctx.beginPath();
+    ctx.arc(cx, cy - size / 2, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-const SEAT_COLS_MX = [
-  // left side (inner → outer)
-  68, 52, 36,
-  // right side (inner → outer)
-  132, 148, 164,
-];
-const SEAT_ROW_MY = [76, 100, 124, 148];
+  // Name label
+  const name = AGENT_DISPLAY[agent]?.split(" ")[0] ?? agent;
+  ctx.font = `bold ${Math.round(size * 0.22)}px monospace`;
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillText(name, cx + 1, cy + size * 0.12 + 1);
+  ctx.fillStyle = "#f0e8c8";
+  ctx.fillText(name, cx, cy + size * 0.12);
 
-function getSeatPositions(
-  bgX: number, bgY: number, bgScale: number,
-): Array<{ x: number; y: number }> {
-  const seats: Array<{ x: number; y: number }> = [];
-  for (const my of SEAT_ROW_MY) {
-    for (const mx of SEAT_COLS_MX) {
-      seats.push({ x: bgX + mx * bgScale, y: bgY + my * bgScale });
+  // Vote badge
+  if (showVote) {
+    const bx = cx + size * 0.32;
+    const by = cy - size * 0.78;
+    const br = size * 0.18;
+    if (vote === "agree") {
+      ctx.fillStyle = "#22c55e";
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.round(br * 1.4)}px monospace`;
+      ctx.fillText("✓", bx, by + br * 0.45);
+    } else if (vote === "disagree") {
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.round(br * 1.4)}px monospace`;
+      ctx.fillText("✗", bx, by + br * 0.45);
+    } else {
+      ctx.fillStyle = "#4b5563";
+      ctx.beginPath(); ctx.arc(bx, by, br * 0.7, 0, Math.PI * 2); ctx.fill();
     }
   }
-  return seats;
 }
 
 // ─── Main draw ────────────────────────────────────────────────────────────
@@ -100,163 +124,126 @@ export function drawInterior(
   const H = ctx.canvas.height;
   const cx = W / 2;
 
-  const bg    = loadImg(BG_URL);
-  const units = loadImg(UNITS_URL);
+  const bg = loadImg("/assets/interior/TownHall.png");
 
-  const warrior = loadImg(WARRIOR_URL);
-
-  // ── 1. Background — zoomed-in, top-anchored ───────────────────
+  // ── 1. Background ──────────────────────────────────────────────
   ctx.fillStyle = "#12111e";
   ctx.fillRect(0, 0, W, H);
 
   const BG_SIZE = 200;
-  // 1.2× zoom: clips bottom edge slightly, keeps throne at top visible
   const bgScale = Math.min(W / BG_SIZE, H / BG_SIZE) * 1.2;
   const bgW = BG_SIZE * bgScale;
   const bgH = BG_SIZE * bgScale;
-  const bgX = (W - bgW) / 2;          // centre horizontally
-  const bgY = Math.max(0, (H - bgH) / 2); // anchor top, never clip throne
+  const bgX = (W - bgW) / 2;
+  const bgY = Math.max(0, (H - bgH) / 2);
 
   if (bg) {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(bg, bgX, bgY, bgW, bgH);
   }
 
-  // Helper: convert mockup-space coords (0-200) to canvas coords
+  // Helper: mockup-space (0–200) → canvas coords (feet position)
   const mc = (mx: number, my: number) => ({
     x: bgX + mx * bgScale,
     y: bgY + my * bgScale,
   });
 
-  // ── 2. Otto on the throne ─────────────────────────────────────
-  const ottoPos = mc(100, 90);
-  const DISP = 64;
+  // ── 2. Seat layout ─────────────────────────────────────────────
+  // Otto: top center
+  // Left col (inner→outer): two slots stacked vertically
+  // Right col: mirror
+  const AGENT_SIZE = Math.round(bgScale * 28); // ~56px at typical scale
 
-  if (warrior) {
-    const frame = Math.floor(frameIndex / 10) % WARRIOR_FRAMES;
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(
-      warrior,
-      frame * WARRIOR_FRAME, 0, WARRIOR_FRAME, WARRIOR_FRAME,
-      ottoPos.x - DISP / 2, ottoPos.y - DISP, DISP, DISP,
-    );
-  } else {
-    ctx.fillStyle = AGENT_COLORS["otto"];
-    ctx.beginPath();
-    ctx.arc(ottoPos.x, ottoPos.y - 8, 10, 0, Math.PI * 2);
-    ctx.fill();
+  const OTTO_POS   = mc(100, 62);
+  const LEFT_SEATS  = [mc(68, 105), mc(68, 145)];
+  const RIGHT_SEATS = [mc(132, 105), mc(132, 145)];
+
+  const showVote = meeting.phase === "vote" || meeting.phase === "result";
+  const attendees = meeting.attendees;
+  const nonOtto = attendees.filter(a => a !== "otto");
+  // Split: first half on left, second half on right (up to 2 each)
+  const leftAgents  = nonOtto.slice(0, 2);
+  const rightAgents = nonOtto.slice(2, 4);
+
+  // ── 3. Draw left column ────────────────────────────────────────
+  for (let i = 0; i < leftAgents.length; i++) {
+    const agent = leftAgents[i]!;
+    const pos = LEFT_SEATS[i]!;
+    drawAgent(ctx, agent, pos.x, pos.y, AGENT_SIZE, frameIndex,
+      showVote ? (meeting.votes[agent] ?? undefined) : undefined, showVote);
   }
-  ctx.fillStyle = "#ffd700";
-  ctx.font = "bold 10px monospace";
-  ctx.textAlign = "center";
-  ctx.fillText("★ Otto ★", ottoPos.x, ottoPos.y + 6);
 
-  // ── 3. Attendees in pew positions ─────────────────────────────
-  const seats = getSeatPositions(bgX, bgY, bgScale);
-  const nonOtto = meeting.attendees.filter(a => a !== "otto");
+  // ── 4. Draw right column ───────────────────────────────────────
+  for (let i = 0; i < rightAgents.length; i++) {
+    const agent = rightAgents[i]!;
+    const pos = RIGHT_SEATS[i]!;
+    drawAgent(ctx, agent, pos.x, pos.y, AGENT_SIZE, frameIndex,
+      showVote ? (meeting.votes[agent] ?? undefined) : undefined, showVote);
+  }
 
-  for (let i = 0; i < nonOtto.length; i++) {
-    const agent = nonOtto[i]!;
-    const seat  = seats[i];
-    if (!seat) continue;
-    const { x, y } = seat;
-
-    if (units) {
-      drawUnit(ctx, units, x, y, false, frameIndex);
-    } else {
-      ctx.fillStyle = AGENT_COLORS[agent] ?? "#888";
-      ctx.beginPath();
-      ctx.arc(x, y - 8, 8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.font = "8px monospace";
-    ctx.fillStyle = "#f0e8c8";
+  // ── 5. Draw Otto (always, center top) ─────────────────────────
+  if (attendees.includes("otto")) {
+    drawAgent(ctx, "otto", OTTO_POS.x, OTTO_POS.y, Math.round(AGENT_SIZE * 1.25),
+      frameIndex, showVote ? (meeting.votes["otto"] ?? undefined) : undefined, showVote);
+    // Crown label
+    ctx.fillStyle = "#ffd700";
+    ctx.font = `bold ${Math.round(AGENT_SIZE * 0.2)}px monospace`;
     ctx.textAlign = "center";
-    ctx.fillText(AGENT_DISPLAY[agent]?.split(" ")[0] ?? agent, x, y + 5);
-
-    // Vote badge
-    if (meeting.phase === "vote" || meeting.phase === "result") {
-      const vote = meeting.votes[agent];
-      if (vote === "agree") {
-        ctx.fillStyle = "#22c55e";
-        ctx.beginPath();
-        ctx.arc(x + 10, y - 20, 7, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 9px monospace";
-        ctx.fillText("✓", x + 10, y - 17);
-      } else if (vote === "disagree") {
-        ctx.fillStyle = "#ef4444";
-        ctx.beginPath();
-        ctx.arc(x + 10, y - 20, 7, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 9px monospace";
-        ctx.fillText("✗", x + 10, y - 17);
-      } else {
-        ctx.fillStyle = "#4b5563";
-        ctx.beginPath();
-        ctx.arc(x + 10, y - 20, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+    ctx.fillText("★ CHAIR ★", OTTO_POS.x, OTTO_POS.y - AGENT_SIZE * 1.35);
   }
 
-  // ── 4. Vote tally bar ─────────────────────────────────────────
-  if (meeting.phase === "vote" || meeting.phase === "result") {
+  // ── 6. Vote tally bar ──────────────────────────────────────────
+  if (showVote) {
     const agreeCount    = Object.values(meeting.votes).filter(v => v === "agree").length;
     const disagreeCount = Object.values(meeting.votes).filter(v => v === "disagree").length;
-    const remaining     = 19 - agreeCount - disagreeCount;
+    const total = attendees.length;
 
     ctx.fillStyle = "rgba(0,0,0,0.78)";
-    ctx.fillRect(32, H - 44, W - 64, 32);
+    ctx.fillRect(cx - 160, H - 44, 320, 32);
     ctx.font = "bold 12px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#22c55e";
-    ctx.fillText(`${agreeCount} agree`, cx - 110, H - 22);
+    ctx.fillText(`${agreeCount} agree`, cx - 70, H - 22);
     ctx.fillStyle = "#6b7280";
-    ctx.fillText("|", cx - 30, H - 22);
+    ctx.fillText("|", cx, H - 22);
     ctx.fillStyle = "#ef4444";
-    ctx.fillText(`${disagreeCount} disagree`, cx + 50, H - 22);
+    ctx.fillText(`${disagreeCount} disagree`, cx + 70, H - 22);
     ctx.fillStyle = "#9ca3af";
-    ctx.fillText(`| ${remaining} pending (need 11)`, cx + 170, H - 22);
+    ctx.font = "10px monospace";
+    ctx.fillText(`of ${total} attendees`, cx, H - 8);
   }
 
-  // ── 5. Result overlay ─────────────────────────────────────────
+  // ── 7. Result overlay ──────────────────────────────────────────
   if (meeting.phase === "result" && meeting.result) {
     const passed = meeting.result.passed;
-    ctx.fillStyle = passed ? "rgba(0,70,0,0.88)" : "rgba(70,0,0,0.88)";
-    ctx.fillRect(48, H / 2 - 56, W - 96, 112);
+    ctx.fillStyle = passed ? "rgba(0,70,0,0.90)" : "rgba(70,0,0,0.90)";
+    ctx.fillRect(cx - 220, H / 2 - 60, 440, 120);
     ctx.strokeStyle = passed ? "#22c55e" : "#ef4444";
     ctx.lineWidth = 2;
-    ctx.strokeRect(48, H / 2 - 56, W - 96, 112);
+    ctx.strokeRect(cx - 220, H / 2 - 60, 440, 120);
 
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 17px monospace";
+    ctx.font = "bold 18px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(passed ? "⚖ LAW PASSED" : "✗ VOTE FAILED", cx, H / 2 - 20);
+    ctx.fillText(passed ? "⚖ LAW PASSED" : "✗ VOTE FAILED", cx, H / 2 - 24);
 
-    ctx.font = "12px monospace";
+    ctx.font = "11px monospace";
     ctx.fillStyle = "#e5e7eb";
-    const desc  = meeting.proposal ?? meeting.description;
+    const desc = meeting.proposal ?? meeting.description;
     const words = desc.split(" ");
     let line = "";
-    let lineY = H / 2 + 4;
+    let lineY = H / 2;
     for (const word of words) {
       const test = line ? `${line} ${word}` : word;
-      if (test.length > 54 && line) {
+      if (test.length > 52 && line) {
         ctx.fillText(line, cx, lineY);
-        line  = word;
-        lineY += 18;
-      } else {
-        line = test;
-      }
+        line = word; lineY += 16;
+      } else { line = test; }
     }
     if (line) ctx.fillText(line, cx, lineY);
 
     ctx.fillStyle = passed ? "#86efac" : "#fca5a5";
     ctx.font = "11px monospace";
-    ctx.fillText(`${meeting.result.agreeCount} agreed of 11 needed`, cx, H / 2 + 44);
+    ctx.fillText(`${meeting.result.agreeCount} agreed`, cx, H / 2 + 46);
   }
 }

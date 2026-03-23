@@ -149,6 +149,7 @@ export interface MeetingState {
   votes: Partial<Record<AgentName, "agree" | "disagree">>;
   proposal: string | null;
   result: { passed: boolean; agreeCount: number } | null;
+  discussion: { agent: AgentName; name: string; text: string }[];
 }
 
 interface VillageStore {
@@ -290,6 +291,7 @@ export const useVillageStore = create<VillageStore>((set, get) => ({
         orderFeed: fills,
         latestEconomy: lastSnap,
         playerCreated: e.state.player_created ?? false,
+        activeMeeting: e.activeMeeting ?? null,
       });
       return;
     }
@@ -361,7 +363,22 @@ export const useVillageStore = create<VillageStore>((set, get) => ({
         text: e.result ?? "",
         location: e.location,
       };
-      set((s) => ({ feed: [entry, ...s.feed].slice(0, 300) }));
+      set((s) => {
+        const base = { feed: [entry, ...s.feed].slice(0, 300) };
+        if (isSpeech && e.location === "Town Hall" && s.activeMeeting) {
+          return {
+            ...base,
+            activeMeeting: {
+              ...s.activeMeeting,
+              discussion: [
+                ...s.activeMeeting.discussion,
+                { agent: e.agent, name: AGENT_DISPLAY[e.agent] ?? e.agent, text: e.result ?? "" },
+              ].slice(-60),
+            },
+          };
+        }
+        return base;
+      });
 
       if (e.location) {
         if (isMove && world) {
@@ -584,6 +601,7 @@ export const useVillageStore = create<VillageStore>((set, get) => ({
           votes: {},
           proposal: null,
           result: null,
+          discussion: [],
         },
       });
       return;
