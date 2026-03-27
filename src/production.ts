@@ -81,8 +81,12 @@ export function resolveProduction(
       }
 
       if (eco.skill !== recipe.skill) {
-        feedbackToAgent(agent, state, `[Can't do that] You don't have the ${recipe.skill} skill.`);
-        continue;
+        // Allow hired laborers to produce using their employer's skill
+        const employer = eco.hiredBy ? state.economics[eco.hiredBy] : null;
+        if (!employer || employer.skill !== recipe.skill) {
+          feedbackToAgent(agent, state, `[Can't do that] You don't have the ${recipe.skill} skill.`);
+          continue;
+        }
       }
 
       const currentLocation = state.agent_locations[agent];

@@ -120,15 +120,38 @@ function buildDynamicSuffix(
   historyLines: string[],
   remaining: number,
   budget: number,
+  locationCtx: LocationContext,
+  agentId: AgentName,
+  displayName: string,
 ): string {
-  return [
+  const parts: string[] = [
     `Tool calls remaining this turn: ${remaining}/${budget}`,
     "",
     "--- Actions this turn ---",
     historyLines.length > 0 ? historyLines.join("\n") : "(none yet)",
-    "",
-    "What do you do next?",
-  ].join("\n");
+  ];
+
+  // Always surface speech that mentions this agent by name and offers directed at them.
+  // This ensures agents can't miss a direct address even if they skip look_around.
+  const pending = locationCtx.speechLog.filter(s =>
+    s.agentId !== agentId &&
+    s.text.toLowerCase().includes(displayName.toLowerCase())
+  );
+  const pendingOffers = locationCtx.negotiationOffers.filter(o => o.to === agentId);
+
+  if (pending.length > 0 || pendingOffers.length > 0) {
+    parts.push("");
+    parts.push("⚠ Addressed to you:");
+    for (const s of pending.slice(-3)) {
+      parts.push(`  ${s.name}: "${s.text}"`);
+    }
+    for (const o of pendingOffers) {
+      parts.push(`  ${o.fromName} offers ${o.qty}x ${o.item} @ ${o.price}c — respond with negotiate() to accept or decline`);
+    }
+  }
+
+  parts.push("", "What do you do next?");
+  return parts.join("\n");
 }
 
 // ─── Async generator harness ──────────────────────────────────
@@ -178,7 +201,7 @@ export async function* runAgentHarness(config: HarnessConfig): AsyncGenerator<vo
   const label = `  ${displayName.padEnd(14)}`;
 
   while (remaining > 0) {
-    const dynamicSuffix = buildDynamicSuffix(historyLines, remaining, budget);
+    const dynamicSuffix = buildDynamicSuffix(historyLines, remaining, budget, locationCtx, agentId, displayName);
 
     let raw: string;
     try {
