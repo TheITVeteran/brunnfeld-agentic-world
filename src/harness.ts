@@ -39,8 +39,14 @@ function buildSeedContext(config: HarnessConfig, displayName: string): string {
   const eco = worldState.economics[agentId];
   const body = worldState.body[agentId];
   const loc = worldState.agent_locations[agentId] ?? "unknown";
-  const skill = (eco?.skill === "none" || !eco?.skill) ? "villager" : eco.skill;
-  const workLoc = eco?.workLocation ?? "";
+  const ownSkill = eco?.skill;
+  const employer = eco?.hiredBy ? worldState.economics[eco.hiredBy] : null;
+  const skill = (!ownSkill || ownSkill === "none")
+    ? (employer ? `laborer (hired by ${getDisplayName(eco.hiredBy!)} — ${employer.skill})` : "villager")
+    : ownSkill;
+  const workLoc = eco?.hiredBy
+    ? (worldState.economics[eco.hiredBy]?.workLocation ?? "")
+    : (eco?.workLocation ?? "");
 
   const lines = [
     `You are ${displayName}, a ${skill} in Brunnfeld.`,

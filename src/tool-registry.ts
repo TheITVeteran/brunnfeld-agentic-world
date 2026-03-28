@@ -366,7 +366,10 @@ function handleNegotiate(args: Record<string, unknown>, config: HarnessToolConfi
 function handleProduce(args: Record<string, unknown>, config: HarnessToolConfig): ToolResult {
   const item = ((args.item as string) ?? "").trim();
   const eco = config.worldState.economics[config.agentId];
-  const skill = eco?.skill ?? "none";
+  const ownSkill = eco?.skill ?? "none";
+  // Hired laborers borrow their employer's skill for production
+  const employer = eco?.hiredBy ? config.worldState.economics[eco.hiredBy] : null;
+  const skill = (ownSkill === "none" && employer) ? (employer.skill ?? "none") : ownSkill;
 
   // Block if already moved this tick — resolveProduction checks post-move location
   const alreadyMoved = config.executedActions.some(a => a.type === "move_to");
@@ -383,7 +386,7 @@ function handleProduce(args: Record<string, unknown>, config: HarnessToolConfig)
   // Validate item name against known recipes for this skill
   const producible = getProducibleItems(skill);
   if (producible.length === 0) {
-    return { text: `[Can't produce] Skill "${skill}" has no production recipes.`, isInteraction: false };
+    return { text: `[Can't produce] You have no skill. Find an employer — use hire_laborer if someone is willing to hire you, or ask them to hire you.`, isInteraction: false };
   }
   const match = producible.find(p => p.item === item);
   if (!match) {
