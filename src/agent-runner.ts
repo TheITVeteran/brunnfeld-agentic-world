@@ -10,7 +10,7 @@ import { buildActionSchema, resolveAction, type ResolveContext } from "./tools.j
 import { tickToTime } from "./time.js";
 import { RECIPES, MULTI_FARM_ITEMS } from "./production.js";
 import { computeVillageConcerns } from "./village-concerns.js";
-import { getAgentNames, getDisplayName, getCouncilMembers, getAgentVillage, getVillageLocations, getLocationType, getVillages, getVillageElder, getVillageTownHall, getRoads, isRoadLocation, getVillageForLocation } from "./world-registry.js";
+import { getAgentNames, getDisplayName, getCouncilMembers, getAgentVillage, getVillageAgents, getVillageLocations, getLocationType, getVillages, getVillageElder, getVillageTownHall, getRoads, isRoadLocation, getVillageForLocation } from "./world-registry.js";
 
 // ─── Hunger food hint ─────────────────────────────────────────
 
@@ -165,6 +165,24 @@ function getProducibleBlock(agent: AgentName, state: WorldState): string {
   return `\nYou can produce here:\n${lines.join("\n")}`;
 }
 
+// ─── Village directory (common knowledge) ────────────────────
+
+function getVillageDirectory(agent: AgentName, state: WorldState): string {
+  const villageId = getAgentVillage(agent);
+  const villagers = getVillageAgents(villageId);
+  const lines: string[] = [];
+
+  for (const a of villagers) {
+    if (a === agent) continue;
+    const eco = state.economics[a];
+    if (!eco?.skill || eco.skill === "none") continue;
+    lines.push(`${getDisplayName(a)} (${eco.skill}) — ${eco.workLocation}`);
+  }
+
+  if (lines.length === 0) return "";
+  return `\nVillage craftspeople:\n${lines.join("\n")}`;
+}
+
 // ─── Travel hint block ────────────────────────────────────────
 
 function buildTravelBlock(agent: AgentName, state: WorldState): string {
@@ -268,6 +286,7 @@ export function buildPerception(
   const inventoryLines = buildInventoryLines(agent, state);
   const toolLine = getToolPerception(agent, state);
   const producibleBlock = getProducibleBlock(agent, state);
+  const villageDirectory = getVillageDirectory(agent, state);
   const marketboardLines = buildMarketboardLines(agent, state);
 
   const agentOrders = getAgentMarketplace(agent, state).orders.filter(o => o.agentId === agent);
@@ -323,7 +342,7 @@ ${othersStr}${soundsStr ? "\n" + soundsStr : ""}${keeperNote ? "\n" + keeperNote
 ${bodyNote ? bodyNote + "\n" : ""}${hungryHint ? hungryHint + "\n" : ""}
 Inventory: ${inventoryLines}
 Wallet: ${eco.wallet} coin${loanPerception}
-Tools: ${toolLine}${hiredNote}${laborerNote}${producibleBlock}${activeOrdersBlock}
+Tools: ${toolLine}${hiredNote}${laborerNote}${producibleBlock}${activeOrdersBlock}${villageDirectory}
 
 Marketplace board:
 ${marketboardLines}

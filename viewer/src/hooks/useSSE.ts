@@ -3,7 +3,7 @@ import { useVillageStore, tickLogToFeed } from "../store";
 import type { SSEEvent } from "../types";
 
 export function useSSE(): void {
-  const { setConnected, handleSSEEvent, setWorld, setAvailableTicks, appendHistoricalFeed, setVillages, setActiveVillageId } = useVillageStore();
+  const { setConnected, handleSSEEvent, setWorld, setAvailableTicks, appendHistoricalFeed, setVillages, setActiveVillageId, setNeedsWorldConfig } = useVillageStore();
 
   useEffect(() => {
     // 1. Load current world state
@@ -26,6 +26,8 @@ export function useSSE(): void {
       .then((r) => r.json())
       .then(async (ticks: string[]) => {
         setAvailableTicks(ticks);
+        // Show world config on fresh start (no tick history)
+        if (ticks.length === 0) setNeedsWorldConfig(true);
         // Load last 3 ticks into the live feed
         const recent = ticks.slice(-3).reverse();
         const allEntries = [];

@@ -16,7 +16,6 @@ const AGENT_DISPLAY_BASE: Record<string, string> = {
   otto: "Otto", pater_markus: "Pater Markus",
   dieter: "Dieter", magda: "Magda", heinrich: "Heinrich",
   elke: "Elke", rupert: "Rupert",
-  player: "You",
 };
 
 /** Format an agent ID as a display name (fallback for dynamically generated agents). */
@@ -176,12 +175,12 @@ interface VillageStore {
   agentStatus: Record<string, string>;    // agent → current harness tool summary
   orderFeed: OrderFeedEntry[];
   priceFlashes: Record<string, PriceFlash>;
-  playerCreated: boolean;
-  playerName: string;
   watchMode: boolean;
   activeMeeting: MeetingState | null;
   activeVillageId: string;
   villages: VillageInfo[];
+  needsWorldConfig: boolean;
+  setNeedsWorldConfig: (v: boolean) => void;
   setWatchMode: (v: boolean) => void;
   setActiveVillageId: (id: string) => void;
   setVillages: (v: VillageInfo[]) => void;
@@ -221,16 +220,13 @@ export const useVillageStore = create<VillageStore>((set, get) => ({
   orderFeed: [],
   priceFlashes: {},
   pendingAnimations: [],
-  playerCreated: false,
-  playerName: "",
   watchMode: false,
+  needsWorldConfig: false,
+  setNeedsWorldConfig: (needsWorldConfig) => set({ needsWorldConfig }),
   activeMeeting: null,
   activeVillageId: "brunnfeld",
   villages: [],
-  setWatchMode: (watchMode) => set((s) => ({
-    watchMode,
-    selectedAgent: watchMode && s.selectedAgent === "player" ? null : s.selectedAgent,
-  })),
+  setWatchMode: (watchMode) => set({ watchMode }),
   setActiveVillageId: (activeVillageId) => set({ activeVillageId }),
   setVillages: (villages) => set({ villages }),
 
@@ -312,7 +308,6 @@ export const useVillageStore = create<VillageStore>((set, get) => ({
         currentTick: e.state.current_tick,
         orderFeed: fills,
         latestEconomy: lastSnap,
-        playerCreated: e.state.player_created ?? false,
         activeMeeting: e.activeMeeting ?? null,
       });
       return;
@@ -377,17 +372,16 @@ export const useVillageStore = create<VillageStore>((set, get) => ({
     }
 
     if (e.type === "action") {
+      if (!e.result || e.actionType === "wait") return;
       const isSpeech = e.actionType === "speak";
-      const isDo = e.actionType === "do";
       const isMove = e.actionType === "move_to";
-      if (!e.result || e.actionType === "think" || e.actionType === "wait") return;
-      if (!isSpeech && !isDo && !isMove) return;
+      const isThought = e.actionType === "think";
 
       const entry: FeedEntry = {
         id: feedCounter++,
         tick: get().currentTick,
         agent: e.agent,
-        type: isSpeech ? "speak" : isMove ? "move" : "do",
+        type: isThought ? "thought" : isSpeech ? "speak" : isMove ? "move" : "do",
         text: e.result ?? "",
         location: e.location,
       };
@@ -436,6 +430,18 @@ export const useVillageStore = create<VillageStore>((set, get) => ({
         // Non-move actions carry an informational location (where the action happened),
         // not a destination — do not snap agent position for speak/do/etc.
       }
+      return;
+    }
+
+    if (e.type === "thought") {
+      const entry: FeedEntry = {
+        id: feedCounter++,
+        tick: get().currentTick,
+        agent: e.agent,
+        type: "thought",
+        text: e.text ?? "",
+      };
+      set((s) => ({ feed: [entry, ...s.feed].slice(0, 300) }));
       return;
     }
 
@@ -537,82 +543,6 @@ export const useVillageStore = create<VillageStore>((set, get) => ({
       return;
     }
 
-    if (e.type === "player:created") {
-      set((s) => ({
-        playerCreated: true,
-        playerName: e.name,
-        world: s.world ? {
-          ...s.world,
-          player_created: true,
-          agent_locations: { ...s.world.agent_locations, player: e.location },
-        } : s.world,
-      }));
-      return;
-    }
-
-    if (e.type === "player:update") {
-      const entry: FeedEntry = {
-        id: feedCounter++,
-        tick: get().currentTick,
-        agent: "player",
-        type: "do",
-        text: e.result || e.feedback || "You act.",
-      };
-      const world = get().world;
-      const fromLoc = world?.agent_locations["player"];
-      const isMove = !!(fromLoc && e.location && fromLoc !== e.location);
-      set((s) => {
-        const baseWorld = s.world ? {
-          ...s.world,
-          // always patch wallet
-          economics: {
-            ...s.world.economics,
-            player: s.world.economics.player
-              ? { ...s.world.economics.player, wallet: e.wallet }
-              : s.world.economics.player,
-          },
-          // only snap location if not animating
-          ...(!isMove && e.location ? {
-            agent_locations: { ...s.world.agent_locations, player: e.location },
-          } : {}),
-        } : s.world;
-        return {
-          feed: [entry, ...s.feed].slice(0, 300),
-          world: baseWorld,
-          ...(isMove ? {
-            pendingAnimations: [
-              ...s.pendingAnimations,
-              { agent: "player" as AgentName, fromLoc: fromLoc!, toLoc: e.location, startMs: performance.now(), durationMs: 900 },
-            ],
-          } : {}),
-        };
-      });
-      return;
-    }
-
-    if (e.type === "player:revived") {
-      const entry: FeedEntry = {
-        id: feedCounter++,
-        tick: get().currentTick,
-        agent: "player",
-        type: "system",
-        text: `You collapsed from hunger. Pater Markus nursed you back (-10 coin).`,
-      };
-      set((s) => ({
-        feed: [entry, ...s.feed].slice(0, 300),
-        world: s.world ? {
-          ...s.world,
-          agent_locations: { ...s.world.agent_locations, player: "Healer's Hut" },
-          economics: {
-            ...s.world.economics,
-            player: s.world.economics.player
-              ? { ...s.world.economics.player, wallet: e.newWallet }
-              : s.world.economics.player,
-          },
-        } : s.world,
-      }));
-      return;
-    }
 
     if (e.type === "meeting:start") {
       set({

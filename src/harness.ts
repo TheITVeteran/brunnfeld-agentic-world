@@ -142,7 +142,7 @@ function buildStaticPrefix(
     "--- Available tools ---",
     "Respond with ONLY a JSON object: {\"tool\": \"<name>\", \"args\": {...}}",
     "Call exactly ONE tool per response. Do not add any other text.",
-    "IMPORTANT: Use at most 2 observation tools (look_around, check_inventory, check_body, recall). Then ACT — produce, move, trade, or speak.",
+    "IMPORTANT: Act decisively. Your situation is described above — produce, move, trade, or speak.",
     "",
     toolDescriptions,
   ].join("\n");

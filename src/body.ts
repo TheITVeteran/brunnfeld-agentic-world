@@ -90,8 +90,9 @@ export function resolveEat(
   removeFromInventory(eco.inventory, item, quantity);
   state.body[agent].hunger = Math.max(0, state.body[agent].hunger - satiation * quantity);
 
-  const hungerDesc = state.body[agent].hunger === 0 ? "You feel full." : "";
-  return `You ate ${quantity} ${item}. ${hungerDesc}`.trim();
+  const h = state.body[agent].hunger;
+  const hungerDesc = h === 0 ? "full" : h <= 1 ? "satisfied" : h <= 2 ? "peckish" : h <= 3 ? "hungry" : "very hungry";
+  return `You ate ${quantity} ${item}. Hunger: ${h}/5 — ${hungerDesc}.`;
 }
 
 // Dawn auto-eat: if starving and has food, consume cheapest item

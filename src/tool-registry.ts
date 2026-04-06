@@ -491,7 +491,25 @@ function handleMoveTo(args: Record<string, unknown>, config: HarnessToolConfig):
   }
 
   config.executedActions.push(resolved);
-  return { text: resolved.result || `[Moving to ${location}]`, isInteraction: true, pendingMove, executedAction: resolved };
+
+  // After a successful move, describe the new location — the environment speaks
+  let moveText = resolved.result || `[Moving to ${location}]`;
+  if (pendingMove) {
+    const dest = pendingMove;
+    const othersAtDest = Object.entries(config.worldState.agent_locations)
+      .filter(([a, l]) => a !== config.agentId && l === dest)
+      .map(([a]) => {
+        const skill = config.worldState.economics[a]?.skill;
+        return skill && skill !== "none" ? `${getDisplayName(a)} (${skill})` : getDisplayName(a);
+      });
+    if (othersAtDest.length > 0) {
+      moveText += ` Others here: ${othersAtDest.join(", ")}.`;
+    } else {
+      moveText += " You are alone here.";
+    }
+  }
+
+  return { text: moveText, isInteraction: true, pendingMove, executedAction: resolved };
 }
 
 function handlePostOrder(args: Record<string, unknown>, config: HarnessToolConfig): ToolResult {
@@ -677,11 +695,7 @@ function handleCancelOrder(args: Record<string, unknown>, config: HarnessToolCon
 type ToolHandler = (args: Record<string, unknown>, config: HarnessToolConfig) => ToolResult;
 
 const TOOL_HANDLERS: Record<string, ToolHandler> = {
-  look_around:    handleLookAround,
   check_inventory: handleCheckInventory,
-  check_prices:   handleCheckPrices,
-  check_body:     handleCheckBody,
-  check_village:  handleCheckVillage,
   recall:         handleRecall,
   assess_person:  handleAssessPerson,
   speak:          handleSpeak,
@@ -696,17 +710,11 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   send_message:   handleSendMessage,
   give_coin:      handleGiveCoin,
   cancel_order:   handleCancelOrder,
-  think:          handleThink,
-  plan:           handlePlan,
   done:           () => ({ text: "Turn ended.", isInteraction: false }),
 };
 
 const ALL_TOOL_DEFS: ToolDef[] = [
-  { name: "look_around",    description: "See who is here and what has been said",              argsHint: "{}" },
   { name: "check_inventory",description: "View your inventory and wallet",                      argsHint: "{}" },
-  { name: "check_prices",   description: "Check market prices for an item",                     argsHint: '{"item": "flour"}' },
-  { name: "check_body",     description: "Check your hunger, energy, health",                   argsHint: "{}" },
-  { name: "check_village",  description: "Village laws, loans, locations, travel options",       argsHint: "{}" },
   { name: "recall",         description: "Search your memory for a topic",                      argsHint: '{"topic": "wheat trade"}' },
   { name: "assess_person",  description: "What you know about someone (must be acquainted)",    argsHint: '{"name": "Anselm"}' },
   { name: "speak",          description: "Say something aloud — max 15 words, only if others present", argsHint: '{"text": "..."}' },
@@ -721,7 +729,6 @@ const ALL_TOOL_DEFS: ToolDef[] = [
   { name: "cancel_order",   description: "Cancel your marketplace order",                       argsHint: '{"order_id": "ord_123"}' },
   { name: "hire_laborer",   description: "Pay someone here to work for you today (output goes to you)", argsHint: '{"agent": "Pabo", "wage": 5}' },
   { name: "quit_job",       description: "Quit your current job and stop working for your employer", argsHint: "{}" },
-  { name: "think",          description: "Inner thought — not heard by others, max 10 words",   argsHint: '{"text": "..."}' },
   { name: "done",           description: "End your turn",                                       argsHint: "{}" },
 ];
 
@@ -760,9 +767,9 @@ export function executeToolCall(
 }
 
 export function formatToolsForPrompt(tools: ToolDef[]): string {
-  const obs   = ["look_around", "check_inventory", "check_prices", "check_body", "check_village", "recall", "assess_person"];
+  const obs   = ["check_inventory", "recall", "assess_person"];
   const act   = ["speak", "negotiate", "produce", "move_to", "post_order", "buy_item", "eat", "send_message", "give_coin", "cancel_order", "hire_laborer", "quit_job"];
-  const plan  = ["think", "done"];
+  const plan  = ["done"];
 
   const group = (label: string, names: string[]) => {
     const defs = tools.filter(t => names.includes(t.name));
@@ -779,10 +786,7 @@ export function formatToolsForPrompt(tools: ToolDef[]): string {
 
 export function getToolSummary(toolName: string, args: Record<string, unknown>): string {
   const s: Record<string, (a: Record<string, unknown>) => string> = {
-    look_around:    () => "looking around",
     check_inventory:() => "checking inventory",
-    check_prices:   a => `checking ${String(a.item ?? "item")} prices`,
-    check_body:     () => "checking body",
     recall:         a => `recalling ${String(a.topic ?? "past")}`,
     assess_person:  a => `thinking about ${String(a.name ?? "someone")}`,
     speak:          () => "speaking",
@@ -794,11 +798,9 @@ export function getToolSummary(toolName: string, args: Record<string, unknown>):
     eat:            a => `eating ${String(a.item ?? "food")}`,
     hire_laborer:   a => `hiring ${String(a.agent ?? "someone")}`,
     quit_job:       () => "quitting job",
-    check_village:  () => "checking village info",
     send_message:   a => `messaging ${String(a.to ?? "someone")}`,
     give_coin:      a => `giving ${String(a.amount ?? "?")}c to ${String(a.to ?? "someone")}`,
     cancel_order:   a => `cancelling order ${String(a.order_id ?? "?")}`,
-    think:          () => "thinking",
     done:           () => "finishing turn",
   };
   return s[toolName]?.(args) ?? toolName;

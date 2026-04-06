@@ -39,7 +39,6 @@ const AGENT_PORTRAIT: Record<AgentName, number> = {
   otto: 13, pater_markus: 14,
   dieter: 15, magda: 16, heinrich: 18,
   elke: 19, rupert: 20,
-  player: 0,
 };
 
 // ─── Agent bars ───────────────────────────────────────────────
@@ -79,7 +78,6 @@ const STATUS_ORDER = { starving: 0, sick: 1, hungry: 2, ok: 3, dead: 4 };
 function AgentList() {
   const world           = useVillageStore((s) => s.world);
   const selectAgent     = useVillageStore((s) => s.selectAgent);
-  const playerCreated   = useVillageStore((s) => s.playerCreated);
   const activeVillageId = useVillageStore((s) => s.activeVillageId);
   const villages        = useVillageStore((s) => s.villages);
   const setActiveVillage = useVillageStore((s) => s.setActiveVillageId);
@@ -104,7 +102,6 @@ function AgentList() {
     const q = search.trim().toLowerCase();
     return (Object.keys(world.economics) as AgentName[])
       .filter(a => {
-        if (a === "player" && !playerCreated) return false;
         // Village filter: match by villageId or fallback for brunnfeld
         const eco = world.economics[a];
         const vid = (eco as { villageId?: string }).villageId ?? "brunnfeld";
@@ -120,7 +117,7 @@ function AgentList() {
         const sb = bodyB ? STATUS_ORDER[getStatusBucket(bodyB)] : 5;
         return sa !== sb ? sa - sb : (AGENT_DISPLAY[a] ?? a).localeCompare(AGENT_DISPLAY[b] ?? b);
       });
-  }, [world?.economics, world?.body, activeVillageId, search, playerCreated]);
+  }, [world?.economics, world?.body, activeVillageId, search]);
 
   return (
     <div style={{

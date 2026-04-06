@@ -101,8 +101,6 @@ export interface WorldState {
   acquaintances: Record<AgentName, AgentName[]>;
   economy_snapshots: EconomySnapshot[];
   loans?: Loan[];
-  player_created: boolean;
-  pending_player_actions: unknown[];
 }
 
 export interface EconomySnapshot {
@@ -131,15 +129,13 @@ export type SSEEvent =
   | { type: "thinking"; agent: AgentName; name: string }
   | { type: "stream"; agent: AgentName; name: string; chunk: string }
   | { type: "action"; agent: AgentName; actionType: string; text?: string; result?: string; location: string }
+  | { type: "thought"; agent: AgentName; text: string }
   | { type: "trade"; buyer: AgentName; seller: AgentName; item: ItemType; quantity: number; pricePerUnit: number; total: number; tick?: number }
   | { type: "production"; agent: AgentName; item: ItemType; qty: number }
   | { type: "economy"; snapshot: EconomySnapshot }
   | { type: "event"; eventType: string; description: string; active_events?: ActiveEvent[]; agent_locations?: Record<string, string> }
   | { type: "event_expired"; eventType: string }
   | { type: "order"; event: "posted" | "cancelled" | "expired"; orderId: string; agentId: AgentName; orderType?: "sell" | "buy"; item?: ItemType; quantity?: number; price?: number }
-  | { type: "player:created"; agent: "player"; name: string; location: string; wallet: number; skill: string }
-  | { type: "player:update"; agent: "player"; result: string; wallet: number; location: string; feedback?: string }
-  | { type: "player:revived"; agent: "player"; newWallet: number }
   | { type: "meeting:start"; agendaType: string; description: string; attendees: AgentName[]; attendeeCount: number }
   | { type: "meeting:phase"; phase: "discussion" | "vote"; round?: number; proposal?: string }
   | { type: "meeting:vote"; agent: AgentName; side: "agree" | "disagree" }

@@ -131,7 +131,9 @@ export function buildingsFromVillage(
 }
 
 function inferLocationType(name: string): string {
-  const l = name.toLowerCase();
+  // Strip village prefix (e.g. "Norddorf:Farm 1" → "Farm 1")
+  const bare = name.includes(":") ? name.split(":").slice(1).join(":") : name;
+  const l = bare.toLowerCase();
   if (l.startsWith("cottage")) return "cottage";
   if (l.startsWith("farm")) return "farm";
   if (l === "forest") return "forest";
@@ -177,6 +179,12 @@ export function locationPx(name: string): { x: number; y: number } {
   const tile = getActiveTiles()[name];
   if (!tile) return { x: 0, y: 0 };
   return tilePx(tile);
+}
+
+/** Find tile by bare location name (e.g. "Farm 1" matches "Norddorf:Farm 1"). */
+export function findTile(bareName: string): { tx: number; ty: number } | undefined {
+  const tiles = getActiveTiles();
+  return tiles[bareName] ?? Object.entries(tiles).find(([k]) => k.endsWith(`:${bareName}`))?.[1];
 }
 
 // Canvas world size

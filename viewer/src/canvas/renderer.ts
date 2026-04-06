@@ -1,5 +1,5 @@
 import { loadSprite, drawSprite } from "./sprites";
-import { getActiveTiles, getActiveBuildings, TILE_SIZE, WORLD_W, WORLD_H } from "./map";
+import { getActiveTiles, getActiveBuildings, findTile, TILE_SIZE, WORLD_W, WORLD_H } from "./map";
 import type { AgentName, WorldState } from "../types";
 import { AGENT_DISPLAY } from "../store";
 
@@ -30,7 +30,6 @@ const AGENT_SPRITE: Record<string, keyof typeof SPRITES> = {
   sybille: "pawnIdle", friedrich: "pawnWood",
   otto: "warriorIdle", pater_markus: "monkIdle",
   dieter: "pawnPickaxe", magda: "pawnIdle", heinrich: "pawnAxe", elke: "pawnIdle", rupert: "pawnPickaxe",
-  player: "pawnIdle",
 };
 
 // Skill → sprite fallback for dynamically generated agents
@@ -49,7 +48,6 @@ const AGENT_COLORS: Record<string, string> = {
   wulf: "#a07040", liesel: "#d878a8", sybille: "#80c8d8", friedrich: "#80a850",
   otto: "#a8a0c8", pater_markus: "#c8c8e8", dieter: "#909090", magda: "#e8b090",
   heinrich: "#d8c060", elke: "#e878b8", rupert: "#b0b0b0",
-  player: "#ffd700",
 };
 
 function agentColor(agent: string): string {
@@ -309,7 +307,7 @@ function drawGround(ctx: CanvasRenderingContext2D): void {
   // ── Terrain detail: Farm rows ─────────────────────────────────
   const farmLocs = ["Farm 1", "Farm 2", "Farm 3"] as const;
   for (const name of farmLocs) {
-    const tile = getActiveTiles()[name];
+    const tile = findTile(name);
     if (!tile) continue;
     const fx = tile.tx * TILE_SIZE - TILE_SIZE / 2;
     const fy = tile.ty * TILE_SIZE - TILE_SIZE / 2;
@@ -324,7 +322,7 @@ function drawGround(ctx: CanvasRenderingContext2D): void {
   }
 
   // ── Terrain detail: Forest tree silhouettes ───────────────────
-  const forestTile = getActiveTiles()["Forest"];
+  const forestTile = findTile("Forest");
   if (forestTile) {
     const fx = forestTile.tx * TILE_SIZE - TILE_SIZE;
     const fy = forestTile.ty * TILE_SIZE - TILE_SIZE / 2;
@@ -344,7 +342,7 @@ function drawGround(ctx: CanvasRenderingContext2D): void {
   }
 
   // ── Terrain detail: Mine rocky texture ────────────────────────
-  const mineTile = getActiveTiles()["Mine"];
+  const mineTile = findTile("Mine");
   if (mineTile) {
     const mx = mineTile.tx * TILE_SIZE;
     const my = mineTile.ty * TILE_SIZE;
@@ -494,38 +492,6 @@ function drawAgentSprite(
   }
 }
 
-function drawPlayerSprite(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  _anim: ActiveAnimation | null,
-  isMoving: boolean,
-  isSelected: boolean,
-): void {
-  const spriteUrl = isMoving ? SPRITES.pawnRun : SPRITES.pawnIdle;
-  const sheet = loadSprite(spriteUrl, SPRITE_FRAME_W, SPRITE_FRAME_H);
-  const animFrame = Math.floor(frameIndex / (isMoving ? 4 : 8));
-
-  // Gold ring
-  ctx.strokeStyle = "#ffd700";
-  ctx.lineWidth = isSelected ? 4 : 3;
-  ctx.beginPath();
-  ctx.arc(cx, cy, SPRITE_DISPLAY / 2 + 4, 0, Math.PI * 2);
-  ctx.stroke();
-
-  if (sheet) {
-    drawSprite(ctx, sheet, animFrame, cx - SPRITE_DISPLAY / 2, cy - SPRITE_DISPLAY / 2, SPRITE_DISPLAY, SPRITE_DISPLAY);
-  }
-
-  // "You" label
-  ctx.font = "bold 11px Georgia, serif";
-  ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillText("You", cx + 1, cy - SPRITE_DISPLAY / 2 - 4);
-  ctx.fillStyle = "#ffd700";
-  ctx.fillText("You", cx, cy - SPRITE_DISPLAY / 2 - 5);
-}
-
 function drawAgents(
   ctx: CanvasRenderingContext2D,
   world: WorldState,
@@ -540,7 +506,6 @@ function drawAgents(
   for (const [agent, loc] of Object.entries(world.agent_locations)) {
     if (animations.has(agent as AgentName)) continue;
     if (caravanActive && agent === "otto" && loc === "Merchant Camp") continue;
-    if (agent === "player" && !world.player_created) continue;
     if (!byLoc[loc]) byLoc[loc] = [];
     byLoc[loc]!.push(agent as AgentName);
   }
@@ -559,11 +524,6 @@ function drawAgents(
       const cx = basePx + TILE_SIZE / 2 + ox;
       const cy = basePy + TILE_SIZE / 2 + oy;
 
-      if (agent === "player") {
-        drawPlayerSprite(ctx, cx, cy, null, false, agent === selectedAgent);
-        return;
-      }
-
       drawAgentSprite(ctx, agent, cx, cy, agent === selectedAgent, false, world);
     });
   }
@@ -574,12 +534,6 @@ function drawAgents(
     const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
     const cx = anim.fromX + (anim.toX - anim.fromX) * ease;
     const cy = anim.fromY + (anim.toY - anim.fromY) * ease;
-
-    if (agent === "player") {
-      if (!world.player_created) continue;
-      drawPlayerSprite(ctx, cx, cy, anim, t < 1, agent === selectedAgent);
-      continue;
-    }
 
     drawAgentSprite(ctx, agent, cx, cy, agent === selectedAgent, t < 1, world);
   }
@@ -622,7 +576,7 @@ function drawEventOverlays(
 
       case "drought": {
         for (const name of ["Farm 1", "Farm 2", "Farm 3"]) {
-          const tile = getActiveTiles()[name];
+          const tile = findTile(name);
           if (!tile) continue;
           const px = tile.tx * TILE_SIZE;
           const py = tile.ty * TILE_SIZE;
@@ -644,7 +598,7 @@ function drawEventOverlays(
       case "double_harvest": {
         const a = 0.15 + pulse * 0.20;
         for (const name of ["Farm 1", "Farm 2", "Farm 3"]) {
-          const tile = getActiveTiles()[name];
+          const tile = findTile(name);
           if (!tile) continue;
           const px = tile.tx * TILE_SIZE;
           const py = tile.ty * TILE_SIZE;
@@ -659,7 +613,7 @@ function drawEventOverlays(
       }
 
       case "mine_collapse": {
-        const tile = getActiveTiles()["Mine"];
+        const tile = findTile("Mine");
         if (!tile) break;
         const px = tile.tx * TILE_SIZE;
         const py = tile.ty * TILE_SIZE;
@@ -678,7 +632,7 @@ function drawEventOverlays(
       }
 
       case "caravan": {
-        const tile = getActiveTiles()["Merchant Camp"];
+        const tile = findTile("Merchant Camp");
         if (!tile) break;
         const px = tile.tx * TILE_SIZE;
         const py = tile.ty * TILE_SIZE;
